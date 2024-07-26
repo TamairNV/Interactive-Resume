@@ -19,6 +19,7 @@ PIXI.settings.SCALE_MODE = PIXI.SCALE_MODES.NEAREST;
     const runningSheet = await PIXI.Assets.load("running.png");
     const idleSheet = await PIXI.Assets.load("idle.png");
     const mapAsset = await PIXI.Assets.load("assets/map.png");
+    const caveBlockTX = await PIXI.Assets.load("assets/caveBlock.png");
 
 
     runningSheet.frame = new PIXI.Rectangle(0, 0, 48, 48)
@@ -32,15 +33,22 @@ PIXI.settings.SCALE_MODE = PIXI.SCALE_MODES.NEAREST;
 
     const map = new PIXI.Sprite(mapAsset);
     const dude = new PIXI.Sprite(idleSheet);
+    const caveBlock = new PIXI.Sprite(caveBlockTX);
+    
+
 
     scene.addChild(map)
     map.y = -1960
     map.x = -300
+    scene.addChild(caveBlock)
 
     app.stage.addChild(scene)
     app.stage.addChild(dude);
     app.stage.y = -100
     //150 degree slop
+    caveBlock.scale = {x: 2, y: 1.5}
+    caveBlock.x = 1000
+    caveBlock.y = 250
 
     let OGScale = {x: 2, y: 2}
     dude.scale = OGScale;
@@ -69,8 +77,8 @@ PIXI.settings.SCALE_MODE = PIXI.SCALE_MODES.NEAREST;
     collidingObj.push(cart)
     scene.addChild(cart)
 
-    let speed = 15;
-    let distanceMoved = 0;
+    let speed = 3;
+    
     let timer = 0
     let frame = 0;
     let inCart = false;
@@ -80,46 +88,52 @@ PIXI.settings.SCALE_MODE = PIXI.SCALE_MODES.NEAREST;
     let dir = 0;
 
     function onScroll(event) {
-        dir = event.deltaY
+        dir += event.deltaY/2
         if (dir > 0 && dude.scale.x < 0) {
             dude.scale.x = OGScale.x;
-            dude.position.x -= dude.width;
+            dude.x -= dude.width;
         }
         if (dir < 0 && dude.scale.x > 0) {
             dude.scale.x = -OGScale.x;
-            dude.position.x += dude.width;
+            dude.x += dude.width;
         }
 
+        if(dir < -200){
+            dir = -200
+        }
+        if(dir > 200){
+            dir = 200
+        }
+        if(Math.abs(dir) < 20){
+            dir = 0
+        }
 
     }
 
     app.ticker.add(async (time) => {
-            timer += time / 60;
-            if (!climbing && !inCart) {
-                if (dir < 0 && !willCollide(dude, collidingObj, speed * time)) {
-                    scene.x += speed * time
-                    dir -= 10
-                    if (dir < 0) {
-                        dir = 0
-                    }
-                }
-                if (dir > 0 && !willCollide(dude, collidingObj, -speed * time)) {
-                    scene.x -= speed * time
-                    dir += 10
-                    if (dir > 0) {
-                        dir = 0
-                    }
-                }
+        timer += time / 60;
+        if(dir > 0){
+            dir -= 500 * time/60
+        }
+        if(dir < 0){
+            dir += 500 * time/60
+        }
+    
+        if (!climbing && !inCart) {
+            if (!willCollide(dude, collidingObj, speed * time)) {
+                scene.x += time/60 * -dir
+            }
 
-                if (timer > 0.1) {
-                    frame += 1;
-                    if (frame > 7) {
-                        frame = 0;
-                    }
-                    timer = 0;
-                    runningSheet.frame = new PIXI.Rectangle(frame * 48, 0, 48, 48);
-                    dude.texture = runningSheet
+
+            if (timer > 0.1) {
+                frame += 1;
+                if (frame > 7) {
+                    frame = 0;
                 }
+                timer = 0;
+                runningSheet.frame = new PIXI.Rectangle(frame * 48, 0, 48, 48);
+                dude.texture = runningSheet
+            }
 
             } else if (!climbing && (dir === 0 || inCart)) {
                 if (timer > 0.1) {
@@ -156,7 +170,7 @@ PIXI.settings.SCALE_MODE = PIXI.SCALE_MODES.NEAREST;
                             scene.x -= speed * time
                             cart.x = dude.x
                             dude.y -= 7
-                            cartMoveToPos(scene, {x: scene.x - 820, y: scene.y}, 3, app, pully, scene,cart,dude)
+                            cartMoveToPos(scene, {x: scene.x - 800, y: scene.y}, 2, app, pully,cart)
                             return
                         }
                         timer = 0;
@@ -165,250 +179,291 @@ PIXI.settings.SCALE_MODE = PIXI.SCALE_MODES.NEAREST;
                     }
                 });
             }
-
-
         }
     )
+
+    async function cartMoveToPos(cart, pos, time, app, pully,realCart) {
+        let dir = 100;
+        let OGPos = {x: cart.x, y: cart.y};
+        let targetPos = {x: pos.x, y: pos.y};
+        let pullyMoveing = false;
+        let isAttached = false;
+        let elapsedTime = 0;
+        let lastLength = 350;
+        let atTheTop = false;
+        let atSecondFloor = false;
+        //dude.anchor.set(0.5,0.5)
+
+        const railTX = await PIXI.Assets.load("assets/rotatingRail.png")
+        const rotatingRail = new PIXI.Sprite(railTX)
+        scene.addChild(rotatingRail)
+        rotatingRail.anchor.set(0, 0.5)
+        rotatingRail.rotation = 1
+        rotatingRail.x = 1550
+        rotatingRail.y = 175
+
+        window.addEventListener('wheel', onScroll);
+        let triggerExplotionPos = pos.x + 400
+        let hasBoombed = false;
+        function update(delta) {
+            let fixedSpeed = Math.abs(dir);
+            if(Math.abs(cart.x - targetPos.x) < 4){
+                fixedSpeed = 0
+            }
+            const deltaX = targetPos.x - cart.x;
+            const deltaY = targetPos.y - cart.y;
+            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+            const directionX = deltaX / distance;
+            const directionY = deltaY / distance;
+            const distancePerFrameX = directionX * fixedSpeed * delta/60;
+            const distancePerFrameY = directionY * fixedSpeed * delta/60;
+
+
+
+            elapsedTime += delta / 60; // Convert delta to seconds
+
+            // Update cart position
+
+            if (!hasBoombed && Math.abs(cart.x - triggerExplotionPos) < 10) {
+                
+                hasBoombed = true
+                explosion(scene,app, {x:realCart.x,y:realCart.y-325},{x:6,y:4})
+                caveBlock.destroy()
+                let shakeTimer = 0
+                let distanceMoved = {x:0,y:0};
+                let shakeStrength = 5;
+                
+                const shake = (delta) => {
+                    if (shakeTimer > 0.45){
+                        app.ticker.remove(shake);
+                        cart.y = pos.y
+                    }
+                   
+                    shakeTimer += delta/60;
+                    let xMove = 0;
+                    let yMove = 0;
+                    
+                    if (Math.random() <0.5 ){
+                         xMove = Math.random() * shakeStrength;
+                    }
+                    else {
+                        xMove = Math.random() * -shakeStrength;
+                    }
+                    if (Math.random() <0.5 && distanceMoved.y < 8){
+                         yMove = Math.random() * shakeStrength;
+                    }
+                    else if(distanceMoved.y > -8){
+                         yMove = Math.random() * -shakeStrength;
+                    }
+                
+                    
+                    cart.x += xMove;
+                    cart.y += yMove;
+                    distanceMoved.x += xMove;
+                    distanceMoved.y += yMove;
+                }
+                cart.x -= distanceMoved.x;
+                cart.y -= distanceMoved.y;
+                app.ticker.add(shake);
+            }
+            if (Math.abs(cart.x - pos.x) < 15) {
+                cart.y = pos.y
+                if (!pullyMoveing) {
+                    dir = lastLength;
+                    if(dir < 0){
+                        
+                    }
+                 
+                }
+
+                pullyMoveing = true
+                if (!isAttached) {
+                    if (dir < 0) {
+                        dir = 0;
+                    }
+                    cart.x = pos.x;
+                    pully.getChildAt(0).height = dir;
+                }
+
+                if (Math.abs(600 - dir) < 30 && !isAttached) {
+                    pully.getChildAt(0).height = 600
+                    isAttached = true
+                    lastLength = dir
+                    dir = 0
+        
+                }
+
+                if (isAttached && !atTheTop) {
+                
+
+                    if (dir > 0) {
+                        cart.y = dir
+                        pully.getChildAt(0).height = (600 - dir);
+                    }
+                    if (dir < 0) {
+                        isAttached = false;
+                        pullyMoveing = false;
+                        dir = 20
+                        targetPos = OGPos
+                        cart.x = pos.x + 20
+                        const deltaX = targetPos.x - cart.x;
+                        const deltaY = targetPos.y - cart.y;
+                        const distancePerFrameX = deltaX * time * delta/60;
+                        const distancePerFrameY = deltaY * time * delta/60;
+                        cart.x += distancePerFrameX * Math.abs(dir)/100;
+                        cart.y += distancePerFrameY * Math.abs(dir)/100;
+                        atSecondFloor = false
+
+                    }
+                    if (Math.abs(520 - dir) < 40 && !atTheTop && dir > 0) {
+                        atTheTop = true
+                        cart.y = 520
+                        atSecondFloor = true;
+                        const rotateRail = (delta) => {
+                            rotatingRail.rotation -= 0.1 * delta;
+                            if (Math.abs(rotatingRail.rotation.valueOf()) < 0.05) {
+                                app.ticker.remove(rotateRail);
+                            }
+                        };
+
+                        app.ticker.add(rotateRail);
+
+                        let doneAcross = false;
+                        let doneUp = false;
+                        dir = 100;
+
+                        let OGPosSecond = {x: cart.x , y: cart.y}
+                        let posSecond = {x: cart.x+600, y: cart.y};
+                        let OGPosSecondUp = {x: cart.x + 600, y: cart.y }
+                        let posSecondUp = {x: cart.x+1600, y: cart.y+500}
+
+                        let targetPos = posSecond
+                        let backwardsTarget = OGPosSecond
+                        let forwardTarget = posSecond
+
+
+                        const moveAcross = (delta) => {
+                            if (dir > 250) {
+                                dir = 250;
+                            }
+                            if (dir < -250) {
+                                dir = -250
+                            }
+                            if (dir > 0) {
+                                targetPos = forwardTarget
+                                dir -= 1
+                            }
+                            if (dir < 0) {
+                                dir += 1
+                                targetPos = backwardsTarget
+                            }
+                            if(dir < 0){
+                                targetPos = backwardsTarget
+                            }
+                            if(dir > 0){
+                                targetPos = forwardTarget
+                            }
+
+                            let fixedSpeed = 0.1*Math.abs(dir/5);
+                            if(Math.abs(cart.x - targetPos.x) < 4){
+                                fixedSpeed = 0
+                            }
+                            const deltaX = targetPos.x - cart.x;
+                            const deltaY = targetPos.y - cart.y;
+                            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+                            const directionX = deltaX / distance;
+                            const directionY = deltaY / distance;
+                            const distancePerFrameX = directionX * fixedSpeed * delta;
+                            const distancePerFrameY = directionY * fixedSpeed * delta;
+                            cart.x += distancePerFrameX;
+                            cart.y += distancePerFrameY;
+
+                            if(Math.abs(cart.x - OGPosSecond.x) < 20 && dir < -20 ){
+                                const rotateRail = (delta) => {
+                                    rotatingRail.rotation += 0.05 * delta;
+                                    if (Math.abs(rotatingRail.rotation.valueOf()) > 1) {
+                                        app.ticker.remove(rotateRail);
+                                    }
+                                };
+
+                                app.ticker.add(rotateRail);
+
+                                isAttached = true;
+                                atTheTop = false;
+                                app.ticker.remove(moveAcross)
+                                cart.x = pos.x
+                                pullyMoveing = true
+                                dir = 475
+                            }
+                            if (Math.abs(cart.x - posSecond.x) < 4) {
+                                if(dir < 0){
+                                    backwardsTarget = OGPosSecond
+                                    forwardTarget = posSecond
+                                    realCart.rotation = 0;
+
+
+
+                                }
+                                else{
+                                    forwardTarget = posSecondUp
+                                    backwardsTarget = posSecond
+                                    realCart.rotation = 0.5
+
+                                }
+                            }
+                            if (Math.abs(cart.x - posSecondUp.x) < 4) {
+                                if(dir > 0){
+                                    backwardsTarget = posSecond
+                                    forwardTarget = posSecondUp
+                                    realCart.rotation = 0.5
+
+                                }
+                                else{
+                                    backwardsTarget = posSecond
+                                    forwardTarget = posSecondUp
+                                    realCart.rotation = 0.5
+
+                                }
+                            }
+                        };
+                        app.ticker.add(moveAcross);
+                    }
+                }
+
+            } else if (!atSecondFloor) {
+                cart.x += distancePerFrameX;
+                cart.y += distancePerFrameY;
+                if (dir > 250) {
+                    dir = 250;
+                }
+                if (dir < -250) {
+                    dir = -250
+                }
+                if (dir > 0) {
+                    targetPos = pos
+                    dir -= 45 * delta/60
+                }
+                if (dir < 0) {
+                    dir += 45* delta/60
+                    targetPos = OGPos
+                }
+            }
+
+        }
+
+        function onScroll(event) {
+            dir += event.deltaY / 5
+
+        }
+
+
+        PIXI.Ticker.shared.add(update);
+    }
 
 
 })();
 
-async function cartMoveToPos(cart, pos, time, app, pully, scene,realCart,dude) {
-    let dir = 100;
-    let OGPos = {x: cart.x, y: cart.y};
-    let targetPos = {x: pos.x, y: pos.y};
-    let pullyMoveing = false;
-    let isAttached = false;
-    let elapsedTime = 0;
-    let lastLength = 350;
-    let atTheTop = false;
-    let atSecondFloor = false;
-    //dude.anchor.set(0.5,0.5)
 
-    const railTX = await PIXI.Assets.load("assets/rotatingRail.png")
-    const rotatingRail = new PIXI.Sprite(railTX)
-    scene.addChild(rotatingRail)
-    rotatingRail.anchor.set(0, 0.5)
-    rotatingRail.rotation = 1
-    rotatingRail.x = 1550
-    rotatingRail.y = 175
-
-    window.addEventListener('wheel', onScroll);
-
-    function update(delta) {
-        let fixedSpeed = 0.1*Math.abs(dir/5);
-        if(Math.abs(cart.x - targetPos.x) < 4){
-            fixedSpeed = 0
-        }
-        const deltaX = targetPos.x - cart.x;
-        const deltaY = targetPos.y - cart.y;
-        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-        const directionX = deltaX / distance;
-        const directionY = deltaY / distance;
-        const distancePerFrameX = directionX * fixedSpeed * delta;
-        const distancePerFrameY = directionY * fixedSpeed * delta;
-
-
-
-        elapsedTime += delta / 60; // Convert delta to seconds
-
-        // Update cart position
-
-
-        if (Math.abs(cart.x - pos.x) < 20) {
-
-            if (!pullyMoveing) {
-                dir = 0;
-                dir = lastLength;
-            }
-
-            pullyMoveing = true
-            if (!isAttached) {
-                if (dir < 0) {
-                    dir = 0;
-                }
-                pully.getChildAt(0).height = dir;
-            }
-
-            if (Math.abs(600 - dir) < 30 && !isAttached) {
-                pully.getChildAt(0).height = 600
-                isAttached = true
-                lastLength = dir
-                dir = 0
-                console.log("attached", cart.y)
-
-
-            }
-
-            if (isAttached && !atTheTop) {
-                console.log("moving",dir)
-
-                if (dir > 0) {
-                    cart.y = dir
-                    pully.getChildAt(0).height = (600 - dir);
-                }
-                if (dir < 0) {
-                    isAttached = false;
-                    pullyMoveing = false;
-                    dir = 100
-                    targetPos = OGPos
-                    const deltaX = targetPos.x - cart.x;
-                    const deltaY = targetPos.y - cart.y;
-                    const distancePerFrameX = deltaX * time * delta * 0.0001;
-                    const distancePerFrameY = deltaY * time * delta * 0.0001;
-                    cart.x += distancePerFrameX * delta * Math.abs(dir);
-                    cart.y += distancePerFrameY * delta * Math.abs(dir);
-                    atSecondFloor = false
-
-                }
-                if (Math.abs(520 - dir) < 40 && !atTheTop && dir > 0) {
-                    atTheTop = true
-                    cart.y = 520
-                    atSecondFloor = true;
-                    const rotateRail = (delta) => {
-                        rotatingRail.rotation -= 0.1 * delta;
-                        if (Math.abs(rotatingRail.rotation.valueOf()) < 0.05) {
-                            app.ticker.remove(rotateRail);
-                        }
-                    };
-
-                    app.ticker.add(rotateRail);
-
-                    let doneAcross = false;
-                    let doneUp = false;
-                    dir = 100;
-
-                    let OGPosSecond = {x: cart.x , y: cart.y}
-                    let posSecond = {x: cart.x+600, y: cart.y};
-                    let OGPosSecondUp = {x: cart.x + 600, y: cart.y }
-                    let posSecondUp = {x: cart.x+1600, y: cart.y+500}
-
-                    let targetPos = posSecond
-                    let backwardsTarget = OGPosSecond
-                    let forwardTarget = posSecond
-
-
-                    const moveAcross = (delta) => {
-
-                        if (dir > 250) {
-                            dir = 250;
-                        }
-                        if (dir < -250) {
-                            dir = -250
-                        }
-                        if (dir > 0) {
-                            targetPos = forwardTarget
-                            dir -= 1
-                        }
-                        if (dir < 0) {
-                            dir += 1
-                            targetPos = backwardsTarget
-                        }
-                        if(dir < 0){
-                            targetPos = backwardsTarget
-                        }
-                        if(dir > 0){
-                            targetPos = forwardTarget
-                        }
-
-                        let fixedSpeed = 0.1*Math.abs(dir/5);
-                        if(Math.abs(cart.x - targetPos.x) < 4){
-                            fixedSpeed = 0
-                        }
-                        const deltaX = targetPos.x - cart.x;
-                        const deltaY = targetPos.y - cart.y;
-                        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-                        const directionX = deltaX / distance;
-                        const directionY = deltaY / distance;
-                        const distancePerFrameX = directionX * fixedSpeed * delta;
-                        const distancePerFrameY = directionY * fixedSpeed * delta;
-                        cart.x += distancePerFrameX;
-                        cart.y += distancePerFrameY;
-                        
-
-
-
-                        if(Math.abs(cart.x - OGPosSecond.x) < 4 && dir < -20 ){
-                            rotatingRail.rotation = 1;
-                            isAttached = true;
-                            atTheTop = false;
-                            app.ticker.remove(moveAcross)
-                            cart.x = pos.x
-                            pullyMoveing = true
-                            dir = 475
-                        }
-                        if (Math.abs(cart.x - posSecond.x) < 4) {
-                            if(dir < 0){
-                                backwardsTarget = OGPosSecond
-                                forwardTarget = posSecond
-                                realCart.rotation = 0;
-
-
-
-                            }
-                            else{
-                                forwardTarget = posSecondUp
-                                backwardsTarget = posSecond
-                                realCart.rotation = 0.5
-
-                            }
-                        }
-                        if (Math.abs(cart.x - posSecondUp.x) < 4) {
-                            if(dir > 0){
-                                backwardsTarget = posSecond
-                                forwardTarget = posSecondUp
-                                realCart.rotation = 0.5
-
-                            }
-                            else{
-                                backwardsTarget = posSecond
-                                forwardTarget = posSecondUp
-                                realCart.rotation = 0.5
-
-                            }
-                        }
-
-
-
-                    };
-                    app.ticker.add(moveAcross);
-
-
-
-                }
-
-
-            }
-
-        } else if (!atSecondFloor) {
-            cart.x += distancePerFrameX;
-            cart.y += distancePerFrameY;
-            if (dir > 250) {
-                dir = 250;
-            }
-            if (dir < -250) {
-                dir = -250
-            }
-            if (dir > 0) {
-                targetPos = pos
-                dir -= 1
-            }
-            if (dir < 0) {
-                dir += 1
-                targetPos = OGPos
-            }
-        }
-
-    }
-
-    function onScroll(event) {
-        dir += event.deltaY / 5
-
-    }
-
-
-    PIXI.Ticker.shared.add(update);
-}
 
 
 const createMinecart = async function (app) {
