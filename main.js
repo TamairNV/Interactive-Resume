@@ -1,4 +1,5 @@
 PIXI.settings.SCALE_MODE = PIXI.SCALE_MODES.NEAREST;
+//banna
 (async () => {
 // Initialize PixiJS Application
     const app = new PIXI.Application({
