@@ -1,625 +1,346 @@
 PIXI.settings.SCALE_MODE = PIXI.SCALE_MODES.NEAREST;
-//banna
+
 (async () => {
-// Initialize PixiJS Application
+
     const app = new PIXI.Application({
         resizeTo: window, // Height of the canvas
-        backgroundColor: 0x1099bb,
-        antialias: false,// Background color of the canvas
+        backgroundColor: 0x1099bb, antialias: false,// Background color of the canvas
     });
     document.getElementById('game-container').appendChild(app.view);
-    window.addEventListener('wheel', function(e) {
-        e.preventDefault();
-    }, { passive: false });
 
-// Prevent default scrolling behavior for touch move
-    window.addEventListener('touchmove', function(e) {
-        e.preventDefault();
-    }, { passive: false });
-    //sheets
-    const runningSheet = await PIXI.Assets.load("running.png");
-    const idleSheet = await PIXI.Assets.load("idle.png");
+
+    class Object {
+        constructor() {
+            this.tag = "Default"
+            this.start()
+            this.updateTicker = async (delta) => {
+                this.update(delta);
+            };
+            app.ticker.add(this.updateTicker)
+        }
+
+        start() {
+        }
+
+        update(delta) {
+        }
+    }
+
+    class TSprite extends Object {
+        constructor(asset) {
+            super();
+            this.loadAssets(asset)
+        }
+
+        async loadAssets(asset) {
+            //this.texture = await PIXI.Assets.load(asset);
+            this.sprite = new PIXI.Sprite(this.texture);
+            scene.addChild(this.sprite)
+        }
+
+    }
+
+    class Animation {
+        constructor(spriteSheet, width, height, frameNumber, frameSpeed, loop = true, freezeAtLastFrame = false, destroyAfterFinished = false) {
+            this.frameSize = [width, height]
+            this.frameNumber = frameNumber;
+            this.frameSpeed = frameSpeed;
+            this.spriteSheet = spriteSheet
+            this.loop = loop
+            this.freezeAtLastFrame = freezeAtLastFrame;
+            this.destroyAfterFinished = destroyAfterFinished
+            this.loadedSheet = this.loadSheet();
+
+
+        }
+
+        async loadSheet() {
+            const sheet = await PIXI.Assets.load(this.spriteSheet);
+            sheet.frame =  new PIXI.Rectangle(0, 0, this.frameSize[0], this.frameSize[1])
+            return sheet
+        }
+    }
+
+    class AnimatingSprite extends Object {
+        constructor(animation) {
+            super();
+            this.currentAnimation = animation
+            this.defaultAni = animation
+            this.timer = 0
+            this.currentFrame = 0;
+            this.loadedAnimations = {}
+
+            this.loadSprite(animation);
+
+        }
+
+        async loadSprite(animation) {
+            this.sheet = await animation.loadedSheet
+            this.sprite = new PIXI.Sprite(this.sheet);
+            scene.addChild(this.sprite)
+            this.loadedAnimations[animation.spriteSheet] = animation.loadedSheet
+        }
+
+
+        async changeAnimation(newAnimation) {
+            if(this.currentAnimation.spriteSheet === newAnimation.spriteSheet){
+                return
+            }
+            this.currentAnimation = newAnimation
+            this.sheet = await newAnimation.loadedSheet
+            this.currentFrame = 0;
+        }
+
+
+        update(delta) {
+            this.timer += delta / 60;
+
+            if (this.timer >= this.currentAnimation.frameSpeed && this.currentFrame < this.currentAnimation.frameNumber) {
+                this.currentFrame += 1
+                if (this.currentFrame > this.currentAnimation.frameNumber - 1) {
+                    if (!this.currentAnimation.freezeAtLastFrame) {
+                        this.currentFrame = 0;
+                    }
+
+                    if (!this.currentAnimation.loop && !this.currentAnimation.freezeAtLastFrame) {
+                        this.changeAnimation(this.defaultAni)
+                    }
+                    if (this.currentAnimation.destroyAfterFinished) {
+                        this.sprite.destroy()
+                    }
+                }
+                this.timer = 0;
+                try {
+                    this.sheet.frame = new PIXI.Rectangle(this.currentFrame * this.currentAnimation.frameSize[0], 0, this.currentAnimation.frameSize[0], this.currentAnimation.frameSize[1])
+                    this.sprite.texture = this.sheet;
+                } catch (err) {
+                    console.log("still loading")
+                }
+            }
+        }
+    }
+
+
+    class Point {
+        constructor(pos) {
+            this.position = pos
+        }
+    }
+
+    class Trail {
+        constructor(obj,player,speed) {
+            this.trail = []
+            this.moveTowardsPoint = 1;
+            this.moveBackPoint = 0;
+            this.graphics = new PIXI.Graphics();
+            this.sprite = player
+            this.speed = speed;
+            this.obj = obj;
+            this.offset = obj.position
+            this.onScroll = this.onScroll.bind(this);
+            window.addEventListener('wheel', this.onScroll);
+            this.deltaY = 0
+            this.updateTicker = async (delta) => {
+                this.update(delta);
+            };
+            app.ticker.add(this.updateTicker)
+        }
+
+        onScroll(event) {
+            this.deltaY += event.deltaY;
+            if(this.deltaY > 300){
+                this.deltaY = 300;
+            }
+            if(this.deltaY < -300){
+                this.deltaY = -300
+            }
+        }
+        update(delta){
+            if(this.deltaY !== 0){
+
+
+                let pointToMoveToo = 0
+                if (this.deltaY > 0) {
+                    pointToMoveToo = this.moveTowardsPoint
+                } if(this.deltaY < 0) {
+                    pointToMoveToo = this.moveBackPoint
+                }
+
+                let playerRelativePos = this.addVectors(this.sprite.sprite.position,{x:this.sprite.sprite.width/2,y:this.sprite.sprite.height/2})
+                if(this.sprite.sprite.scale.x < 0){
+                    playerRelativePos.x -= this.sprite.sprite.width
+                }
+                let trailPos = this.addVectors(this.trail[pointToMoveToo],this.offset);
+                let nVector = this.normalize(playerRelativePos, trailPos)
+                this.obj.position = this.subVectors( this.obj.position,this.mulVector(nVector ,this.speed))
+                let nMag = this.getMag(playerRelativePos, trailPos)
+
+                if(nVector.y < 0.15 && nVector.y > -0.15 ){
+                    this.sprite.changeAnimation(runningAni)
+                }
+                else{
+                    this.sprite.changeAnimation(idleAni)
+                }
+                if(nVector.x > 0&& this.sprite.sprite.scale.x < 0){
+                    this.sprite.sprite.scale.x = 2;
+                    this.sprite.sprite.x -= this.sprite.sprite.width
+                }
+                if(nVector.x < 0 && this.sprite.sprite.scale.x > 0){
+                    this.sprite.sprite.scale.x = -2;
+                    this.sprite.sprite.x += this.sprite.sprite.width
+                }
+
+
+                this.drawPoints()
+
+                if (nMag < this.speed && nMag > -this.speed){
+                    if (this.deltaY > 0) {
+                        this.moveTowardsPoint +=1
+                        this.moveBackPoint +=1
+                    } if(this.deltaY < 0)  {
+                        this.moveTowardsPoint -=1
+                        this.moveBackPoint -=1
+                    }
+                }
+                if (this.deltaY > 0) {
+                    this.deltaY -= 5;
+                } if(this.deltaY < 0) {
+                    this.deltaY += 5;
+                }
+
+            }
+            else{
+                this.sprite.changeAnimation(idleAni)
+            }
+
+
+
+        }
+
+        normalize(point1, point2) {
+            let vector = {x: point2.x - point1.x, y: point2.y - point1.y};
+            let mag = this.getMag(point1, point2);
+            if (mag === 0) {
+                // If magnitude is zero, return a zero vector
+                return {x: 0, y: 0};
+            }
+            return {x: vector.x / mag, y: vector.y / mag};
+        }
+
+        getMag(point1, point2){
+            let vector = {x: point2.x - point1.x, y: point2.y - point1.y};
+            return  Math.sqrt(vector.x ** 2 + vector.y ** 2)
+        }
+
+        addVectors(point1, point2) {
+            return {x: point1.x  + point2.x, y: point1.y  + point2.y}
+        }
+        subVectors(point1, point2) {
+            return {x: point1.x - point2.x, y: point1.y - point2.y}
+        }
+        mulVector(point1, factor) {
+            return {x: point1.x * factor, y: point1.y * factor}
+        }
+
+
+        drawPoints() {
+            app.stage.removeChild(this.graphics);
+            this.graphics.destroy(true);
+            this.graphics = new PIXI.Graphics();
+            this.graphics.beginFill(0xff0000);
+            for (let i = 0; i < this.trail.length; i++) {
+                this.graphics.drawCircle(this.trail[i].x+this.offset.x, this.trail[i].y+this.offset.y, 10);
+                console.log("drawn")
+            }
+            this.graphics.endFill();
+            scene.addChild(this.graphics);
+        }
+
+    }
+
+    async function waitWhileLoading(sprite) {
+        while (sprite.sprite === undefined) {
+            await new Promise(resolve => setTimeout(resolve, 50)); // Check every 50ms
+        }
+    }
+    function adjustMapPosition() {
+        map.x = (app.screen.width - 1700)/2
+        map.y = (app.screen.height - 5020)/2
+
+    }
+    function adjustPlayerPosition() {
+        player.sprite.position = {x:app.screen.width/2,y:player.sprite.y = app.screen.height/3.5 * 2}
+        PRP = {x: app.screen.width/2 + player.sprite.width/2, y: app.screen.height/3.5 *2+ player.sprite.height/2}
+        trail.trail = []
+        trail.trail.push(PRP)
+        trail.trail.push({x:PRP.x+1050,y:PRP.y})
+        trail.trail.push({x:PRP.x+1050,y:PRP.y - 515})
+        trail.trail.push({x:PRP.x+425,y:PRP.y - 515})
+        trail.trail.push({x:PRP.x-100,y:PRP.y - 700})
+
+
+
+    }
+
+    window.addEventListener('resize', () => {
+        app.renderer.resize(window.innerWidth, window.innerHeight);
+        adjustMapPosition();
+        adjustPlayerPosition()
+
+    });
+
+
+
     const mapAsset = await PIXI.Assets.load("assets/map.png");
-    const caveBlockTX = await PIXI.Assets.load("assets/caveBlock.png");
-
-
-    runningSheet.frame = new PIXI.Rectangle(0, 0, 48, 48)
-    idleSheet.frame = new PIXI.Rectangle(0, 0, 48, 48)
-    runningSheet.frame = new PIXI.Rectangle(0, 0, 48, 48)
-    idleSheet.frame = new PIXI.Rectangle(0, 0, 48, 48)
-
+    const map = new PIXI.Sprite(mapAsset);
 
     const scene = new PIXI.Container()
-    let collidingObj = []
+    const background = new PIXI.Container();
+    background.addChild(map)
 
-    const map = new PIXI.Sprite(mapAsset);
-    const dude = new PIXI.Sprite(idleSheet);
-    const caveBlock = new PIXI.Sprite(caveBlockTX);
-    
+    app.stage.addChild(background)
+    app.stage.addChild(scene);
 
 
-    scene.addChild(map)
-    map.y = -1960
-    map.x = -300
-    scene.addChild(caveBlock)
+    const runningAni = new Animation("running.png", 48, 48, 8, 0.05,false)
+    const idleAni = new Animation("idle.png", 48, 48, 10, 0.1)
+    const player = new AnimatingSprite(idleAni)
+    await waitWhileLoading(player)
+    player.sprite.scale = {x: 2, y: 2}
+    let PRP = {x: app.screen.width/2 + player.sprite.width/2, y: app.screen.height/3.5 *2+ player.sprite.height/2}
+    const trail = new Trail(background,player,5)
+    adjustPlayerPosition();
+    adjustMapPosition();
 
-    app.stage.addChild(scene)
-    app.stage.addChild(dude);
-    app.stage.y = -100
-    //150 degree slop
-    caveBlock.scale = {x: 2, y: 1.5}
-    caveBlock.x = 1000
-    caveBlock.y = 250
+    window.addEventListener("mousemove", mouseMove)
+    window.addEventListener("mousedown", mouseDown)
 
-    let OGScale = {x: 2, y: 2}
-    dude.scale = OGScale;
-    dude.position.x = app.screen.width / 2
-    dude.position.y = 620
-    let mousePos = {x: 0, y: 0}
 
-    app.view.addEventListener('mousemove', (event) => {
-        const mousePosition = {
+    let mousePosition = {
+        x: 0,
+        y: 0
+    };
+
+    function mouseMove(event) {
+        mousePosition = {
             x: event.clientX,
             y: event.clientY
         };
-        mousePos = mousePosition;
-
-
-    });
-    let moving = false;
-
-    const cart = await createMinecart(app)
-    const pully = await createPully(scene, app)
-    scene.addChild(pully)
-    pully.x = 1640
-    pully.y = 20
-    cart.y = 655
-    cart.x = 800
-    collidingObj.push(cart)
-    scene.addChild(cart)
-
-    let speed = 3;
-    
-    let timer = 0
-    let frame = 0;
-    let inCart = false;
-    let climbing = false;
-
-    window.addEventListener('wheel', onScroll);
-    let dir = 0;
-
-    function onScroll(event) {
-        dir += event.deltaY/2
-        if (dir > 0 && dude.scale.x < 0) {
-            dude.scale.x = OGScale.x;
-            dude.x -= dude.width;
-        }
-        if (dir < 0 && dude.scale.x > 0) {
-            dude.scale.x = -OGScale.x;
-            dude.x += dude.width;
-        }
-
-        if(dir < -200){
-            dir = -200
-        }
-        if(dir > 200){
-            dir = 200
-        }
-        if(Math.abs(dir) < 20){
-            dir = 0
-        }
 
     }
 
-    app.ticker.add(async (time) => {
-        timer += time / 60;
-        if(dir > 0){
-            dir -= 500 * time/60
-        }
-        if(dir < 0){
-            dir += 500 * time/60
-        }
-    
-        if (!climbing && !inCart) {
-            if (!willCollide(dude, collidingObj, speed * time)) {
-                scene.x += time/60 * -dir
-            }
+    const exploAni = await new Animation("assets/explotionSheet.png", 100, 100, 60, 0.01, false, true, true)
 
-
-            if (timer > 0.1) {
-                frame += 1;
-                if (frame > 7) {
-                    frame = 0;
-                }
-                timer = 0;
-                runningSheet.frame = new PIXI.Rectangle(frame * 48, 0, 48, 48);
-                dude.texture = runningSheet
-            }
-
-            } else if (!climbing && (dir === 0 || inCart)) {
-                if (timer > 0.1) {
-                    frame += 1;
-                    if (frame > 9) {
-                        frame = 0;
-                    }
-                    timer = 0;
-                    idleSheet.frame = new PIXI.Rectangle(frame * 48, 0, 48, 48);
-                    dude.texture = idleSheet
-                }
-            }
-
-            if (willCollideWith(dude, cart, {x: speed * time, y: 0}) && !inCart && !climbing) {
-
-
-                inCart = true;
-                const climbInSheet = await PIXI.Assets.load("assets/climbin.png");
-
-
-                let frame = 0;
-                let timer = 0;
-                climbing = true
-                scene.x -= cart.width
-                app.ticker.add((deltaTime) => {
-                    timer += deltaTime / 60;
-
-                    if (timer > 0.1 && climbing) {
-                        frame += 1;
-                        if (frame >= 5) {
-                            climbing = false
-                            cart.removeFromParent()
-                            app.stage.addChild(cart)
-                            scene.x -= speed * time
-                            cart.x = dude.x
-                            dude.y -= 7
-                            cartMoveToPos(scene, {x: scene.x - 800, y: scene.y}, 2, app, pully,cart)
-                            return
-                        }
-                        timer = 0;
-                        climbInSheet.frame = new PIXI.Rectangle(frame * 48, 0, 48, 48)
-                        dude.texture = climbInSheet
-                    }
-                });
-            }
-        }
-    )
-
-    async function cartMoveToPos(cart, pos, time, app, pully,realCart) {
-        let dir = 100;
-        let OGPos = {x: cart.x, y: cart.y};
-        let targetPos = {x: pos.x, y: pos.y};
-        let pullyMoveing = false;
-        let isAttached = false;
-        let elapsedTime = 0;
-        let lastLength = 350;
-        let atTheTop = false;
-        let atSecondFloor = false;
-        //dude.anchor.set(0.5,0.5)
-
-        const railTX = await PIXI.Assets.load("assets/rotatingRail.png")
-        const rotatingRail = new PIXI.Sprite(railTX)
-        scene.addChild(rotatingRail)
-        rotatingRail.anchor.set(0, 0.5)
-        rotatingRail.rotation = 1
-        rotatingRail.x = 1550
-        rotatingRail.y = 175
-
-        window.addEventListener('wheel', onScroll);
-        let triggerExplotionPos = pos.x + 400
-        let hasBoombed = false;
-        function update(delta) {
-            let fixedSpeed = Math.abs(dir);
-            if(Math.abs(cart.x - targetPos.x) < 4){
-                fixedSpeed = 0
-            }
-            const deltaX = targetPos.x - cart.x;
-            const deltaY = targetPos.y - cart.y;
-            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-            const directionX = deltaX / distance;
-            const directionY = deltaY / distance;
-            const distancePerFrameX = directionX * fixedSpeed * delta/60;
-            const distancePerFrameY = directionY * fixedSpeed * delta/60;
-
-
-
-            elapsedTime += delta / 60; // Convert delta to seconds
-
-            // Update cart position
-
-            if (!hasBoombed && Math.abs(cart.x - triggerExplotionPos) < 10) {
-                
-                hasBoombed = true
-                explosion(scene,app, {x:realCart.x,y:realCart.y-325},{x:6,y:4})
-                caveBlock.destroy()
-                let shakeTimer = 0
-                let distanceMoved = {x:0,y:0};
-                let shakeStrength = 5;
-                
-                const shake = (delta) => {
-                    if (shakeTimer > 0.45){
-                        app.ticker.remove(shake);
-                        cart.y = pos.y
-                    }
-                   
-                    shakeTimer += delta/60;
-                    let xMove = 0;
-                    let yMove = 0;
-                    
-                    if (Math.random() <0.5 ){
-                         xMove = Math.random() * shakeStrength;
-                    }
-                    else {
-                        xMove = Math.random() * -shakeStrength;
-                    }
-                    if (Math.random() <0.5 && distanceMoved.y < 8){
-                         yMove = Math.random() * shakeStrength;
-                    }
-                    else if(distanceMoved.y > -8){
-                         yMove = Math.random() * -shakeStrength;
-                    }
-                
-                    
-                    cart.x += xMove;
-                    cart.y += yMove;
-                    distanceMoved.x += xMove;
-                    distanceMoved.y += yMove;
-                }
-                cart.x -= distanceMoved.x;
-                cart.y -= distanceMoved.y;
-                app.ticker.add(shake);
-            }
-            if (Math.abs(cart.x - pos.x) < 15) {
-                cart.y = pos.y
-                if (!pullyMoveing) {
-                    dir = lastLength;
-                    if(dir < 0){
-                        
-                    }
-                 
-                }
-
-                pullyMoveing = true
-                if (!isAttached) {
-                    if (dir < 0) {
-                        dir = 0;
-                    }
-                    cart.x = pos.x;
-                    pully.getChildAt(0).height = dir;
-                }
-
-                if (Math.abs(600 - dir) < 30 && !isAttached) {
-                    pully.getChildAt(0).height = 600
-                    isAttached = true
-                    lastLength = dir
-                    dir = 0
-        
-                }
-
-                if (isAttached && !atTheTop) {
-                
-
-                    if (dir > 0) {
-                        cart.y = dir
-                        pully.getChildAt(0).height = (600 - dir);
-                    }
-                    if (dir < 0) {
-                        isAttached = false;
-                        pullyMoveing = false;
-                        dir = 20
-                        targetPos = OGPos
-                        cart.x = pos.x + 20
-                        const deltaX = targetPos.x - cart.x;
-                        const deltaY = targetPos.y - cart.y;
-                        const distancePerFrameX = deltaX * time * delta/60;
-                        const distancePerFrameY = deltaY * time * delta/60;
-                        cart.x += distancePerFrameX * Math.abs(dir)/100;
-                        cart.y += distancePerFrameY * Math.abs(dir)/100;
-                        atSecondFloor = false
-
-                    }
-                    if (Math.abs(520 - dir) < 40 && !atTheTop && dir > 0) {
-                        atTheTop = true
-                        cart.y = 520
-                        atSecondFloor = true;
-                        const rotateRail = (delta) => {
-                            rotatingRail.rotation -= 0.1 * delta;
-                            if (Math.abs(rotatingRail.rotation.valueOf()) < 0.05) {
-                                app.ticker.remove(rotateRail);
-                            }
-                        };
-
-                        app.ticker.add(rotateRail);
-
-                        let doneAcross = false;
-                        let doneUp = false;
-                        dir = 100;
-
-                        let OGPosSecond = {x: cart.x , y: cart.y}
-                        let posSecond = {x: cart.x+600, y: cart.y};
-                        let OGPosSecondUp = {x: cart.x + 600, y: cart.y }
-                        let posSecondUp = {x: cart.x+1600, y: cart.y+500}
-
-                        let targetPos = posSecond
-                        let backwardsTarget = OGPosSecond
-                        let forwardTarget = posSecond
-
-
-                        const moveAcross = (delta) => {
-                            if (dir > 250) {
-                                dir = 250;
-                            }
-                            if (dir < -250) {
-                                dir = -250
-                            }
-                            if (dir > 0) {
-                                targetPos = forwardTarget
-                                dir -= 1
-                            }
-                            if (dir < 0) {
-                                dir += 1
-                                targetPos = backwardsTarget
-                            }
-                            if(dir < 0){
-                                targetPos = backwardsTarget
-                            }
-                            if(dir > 0){
-                                targetPos = forwardTarget
-                            }
-
-                            let fixedSpeed = 0.1*Math.abs(dir/5);
-                            if(Math.abs(cart.x - targetPos.x) < 4){
-                                fixedSpeed = 0
-                            }
-                            const deltaX = targetPos.x - cart.x;
-                            const deltaY = targetPos.y - cart.y;
-                            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-                            const directionX = deltaX / distance;
-                            const directionY = deltaY / distance;
-                            const distancePerFrameX = directionX * fixedSpeed * delta;
-                            const distancePerFrameY = directionY * fixedSpeed * delta;
-                            cart.x += distancePerFrameX;
-                            cart.y += distancePerFrameY;
-
-                            if(Math.abs(cart.x - OGPosSecond.x) < 20 && dir < -20 ){
-                                const rotateRail = (delta) => {
-                                    rotatingRail.rotation += 0.05 * delta;
-                                    if (Math.abs(rotatingRail.rotation.valueOf()) > 1) {
-                                        app.ticker.remove(rotateRail);
-                                    }
-                                };
-
-                                app.ticker.add(rotateRail);
-
-                                isAttached = true;
-                                atTheTop = false;
-                                app.ticker.remove(moveAcross)
-                                cart.x = pos.x
-                                pullyMoveing = true
-                                dir = 475
-                            }
-                            if (Math.abs(cart.x - posSecond.x) < 4) {
-                                if(dir < 0){
-                                    backwardsTarget = OGPosSecond
-                                    forwardTarget = posSecond
-                                    realCart.rotation = 0;
-
-
-
-                                }
-                                else{
-                                    forwardTarget = posSecondUp
-                                    backwardsTarget = posSecond
-                                    realCart.rotation = 0.5
-
-                                }
-                            }
-                            if (Math.abs(cart.x - posSecondUp.x) < 4) {
-                                if(dir > 0){
-                                    backwardsTarget = posSecond
-                                    forwardTarget = posSecondUp
-                                    realCart.rotation = 0.5
-
-                                }
-                                else{
-                                    backwardsTarget = posSecond
-                                    forwardTarget = posSecondUp
-                                    realCart.rotation = 0.5
-
-                                }
-                            }
-                        };
-                        app.ticker.add(moveAcross);
-                    }
-                }
-
-            } else if (!atSecondFloor) {
-                cart.x += distancePerFrameX;
-                cart.y += distancePerFrameY;
-                if (dir > 250) {
-                    dir = 250;
-                }
-                if (dir < -250) {
-                    dir = -250
-                }
-                if (dir > 0) {
-                    targetPos = pos
-                    dir -= 45 * delta/60
-                }
-                if (dir < 0) {
-                    dir += 45* delta/60
-                    targetPos = OGPos
-                }
-            }
-
-        }
-
-        function onScroll(event) {
-            dir += event.deltaY / 5
-
-        }
-
-
-        PIXI.Ticker.shared.add(update);
+    async function mouseDown(event) {
+        const bomb = await new AnimatingSprite(exploAni)
+        bomb.sprite.position = mousePosition
+        console.log(mousePosition)
     }
-
 
 })();
 
 
 
 
-const createMinecart = async function (app) {
-    const textures = await PIXI.Assets.load(['assets/minecart.png', 'assets/wheel.png']);
-
-    const cartContainer = new PIXI.Container();
-    const cart = new PIXI.Sprite(textures['assets/minecart.png']);
-    const wheel1 = new PIXI.Sprite(textures['assets/wheel.png']);
-    const wheel2 = new PIXI.Sprite(textures['assets/wheel.png']);
-
-    wheel1.position.set(25, 38);
-    wheel2.position.set(58, 38);
-    wheel1.anchor.set(0.5);
-    wheel2.anchor.set(0.5);
-    cartContainer.addChild(cart);
-    cartContainer.addChild(wheel1);
-    cartContainer.addChild(wheel2);
-
-    cartContainer.x = 200;
-    cartContainer.y = 200;
-    let moving = true;
-    app.ticker.add((time) => {
-        if (moving) {
-            wheel1.rotation += 0.2 * time;
-            wheel2.rotation += 0.2 * time;
-        }
-    });
 
 
-    return cartContainer;
-};
-
-const createPully = async function (scene, app) {
-    const ropeTX = await PIXI.Assets.load("assets/rope.png")
-    const cogTX = await PIXI.Assets.load("assets/cog.png")
-    const hookTX = await PIXI.Assets.load("assets/hook.png")
-
-
-    const rope = await new PIXI.TilingSprite(
-        ropeTX,
-        7,
-        0,
-    );
-
-    const cog = new PIXI.Sprite(cogTX)
-    const hook = new PIXI.Sprite(hookTX)
-
-    const pullyContainer = new PIXI.Container()
-    pullyContainer.addChild(rope, cog, hook)
-    pullyContainer.y = 50
-    scene.addChild(pullyContainer)
-    cog.anchor.set(0.5, 0.5)
-    app.ticker.add((deltaTime) => {
-        hook.y = rope.y + rope.height;
-        hook.x = rope.x - hook.width / 2 + rope.width / 2
-        rope.x = cog.x - rope.width / 2
-        cog.rotation += 0.01 * deltaTime
-        //rope.height += 1 * deltaTime
-
-    });
-    return pullyContainer
-}
-
-const explosion = async function (scene, app, position, scale) {
-    // Load the spritesheet image
-    const explosionSheet = await PIXI.Assets.load("assets/explotionSheet.png");
-
-    const frames = [];
-    const frameWidth = 100;
-    const frameHeight = 100;
-    const totalFrames = 59;
-
-
-    for (let i = 0; i < totalFrames; i++) {
-        const frameTexture = new PIXI.Texture(
-            explosionSheet,
-            new PIXI.Rectangle(i * frameWidth, 0, frameWidth, frameHeight)
-        );
-        frames.push(frameTexture);
-    }
-
-    // Create a sprite using the first frame
-    const bomb = new PIXI.Sprite(frames[0]);
-    bomb.scale = scale
-    scene.addChild(bomb);
-
-    bomb.x = position.x - bomb.width / 2 - scene.x;
-    bomb.y = position.y - bomb.height / 2 - scene.y;
-
-    let frame = 0;
-    let timer = 0;
-
-    app.ticker.add((deltaTime) => {
-        timer += deltaTime / 60;
-
-        if (timer > 0.01) {
-            frame += 1;
-            if (frame >= totalFrames) {
-                //bomb.parent.removeChild(bomb);
-                bomb.removeFromParent();
-                return;
-            }
-            timer = 0;
-            bomb.texture = frames[frame];
-        }
-    });
-};
-
-function isCollisionWith(obj1, obj2) {
-    // Get bounds of each object
-    let bounds1 = obj1.getBounds();
-    let bounds2 = obj2.getBounds();
-
-    // Check for intersection
-    return bounds1.x + bounds1.width > bounds2.x &&
-        bounds1.x < bounds2.x + bounds2.width &&
-        bounds1.y + bounds1.height > bounds2.y &&
-        bounds1.y < bounds2.y + bounds2.height;
-}
-
-function willCollideWith(obj1, obj2, movement) {
-    // Get current bounds of obj1 and obj2
-    let bounds1 = obj1.getBounds();
-    let bounds2 = obj2.getBounds();
-
-    // Calculate new bounds for obj1 after applying movement
-    let newBounds1 = {
-        x: bounds1.x + movement.x,
-        y: bounds1.y + movement.y,
-        width: bounds1.width,
-        height: bounds1.height
-    };
-
-    // Check for intersection of new bounds1 with bounds2
-    return (newBounds1.x + newBounds1.width > bounds2.x &&
-        newBounds1.x < bounds2.x + bounds2.width &&
-        newBounds1.y + newBounds1.height > bounds2.y &&
-        newBounds1.y < bounds2.y + bounds2.height);
-}
-
-function isCollision(obj1, physicsObjs) {
-    for (let i = 0; i < physicsObjs.length; i++) {
-        if (isCollisionWith(obj1, physicsObjs[i])) {
-            return true
-        }
-    }
-    return false;
-}
-
-function willCollide(obj1, physicsObjs, movement) {
-    for (let i = 0; i < physicsObjs.length; i++) {
-        if (willCollideWith(obj1, physicsObjs[i], movement)) {
-            return true
-        }
-
-    }
-    return false;
-}
