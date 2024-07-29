@@ -124,6 +124,7 @@ PIXI.settings.SCALE_MODE = PIXI.SCALE_MODES.NEAREST;
     class Point {
         constructor(pos) {
             this.position = pos
+
         }
     }
 
@@ -166,14 +167,14 @@ PIXI.settings.SCALE_MODE = PIXI.SCALE_MODES.NEAREST;
                     pointToMoveToo = this.moveBackPoint
                 }
 
-                let playerRelativePos = this.addVectors(this.sprite.sprite.position,{x:this.sprite.sprite.width/2,y:this.sprite.sprite.height/2})
+                let playerRelativePos = addVectors(this.sprite.sprite.position,{x:this.sprite.sprite.width/2,y:this.sprite.sprite.height/2})
                 if(this.sprite.sprite.scale.x < 0){
                     playerRelativePos.x -= this.sprite.sprite.width
                 }
-                let trailPos = this.addVectors(this.trail[pointToMoveToo],this.offset);
-                let nVector = this.normalize(playerRelativePos, trailPos)
-                this.obj.position = this.subVectors( this.obj.position,this.mulVector(nVector ,this.speed))
-                let nMag = this.getMag(playerRelativePos, trailPos)
+                let trailPos = addVectors(this.trail[pointToMoveToo],this.offset);
+                let nVector = normalize(playerRelativePos, trailPos)
+                this.obj.position = subVectors( this.obj.position,mulVector(nVector ,this.speed))
+                let nMag = getMag(playerRelativePos, trailPos)
 
                 if(nVector.y < 0.15 && nVector.y > -0.15 ){
                     this.sprite.changeAnimation(runningAni)
@@ -217,31 +218,6 @@ PIXI.settings.SCALE_MODE = PIXI.SCALE_MODES.NEAREST;
 
         }
 
-        normalize(point1, point2) {
-            let vector = {x: point2.x - point1.x, y: point2.y - point1.y};
-            let mag = this.getMag(point1, point2);
-            if (mag === 0) {
-                // If magnitude is zero, return a zero vector
-                return {x: 0, y: 0};
-            }
-            return {x: vector.x / mag, y: vector.y / mag};
-        }
-
-        getMag(point1, point2){
-            let vector = {x: point2.x - point1.x, y: point2.y - point1.y};
-            return  Math.sqrt(vector.x ** 2 + vector.y ** 2)
-        }
-
-        addVectors(point1, point2) {
-            return {x: point1.x  + point2.x, y: point1.y  + point2.y}
-        }
-        subVectors(point1, point2) {
-            return {x: point1.x - point2.x, y: point1.y - point2.y}
-        }
-        mulVector(point1, factor) {
-            return {x: point1.x * factor, y: point1.y * factor}
-        }
-
 
         drawPoints() {
             app.stage.removeChild(this.graphics);
@@ -250,13 +226,37 @@ PIXI.settings.SCALE_MODE = PIXI.SCALE_MODES.NEAREST;
             this.graphics.beginFill(0xff0000);
             for (let i = 0; i < this.trail.length; i++) {
                 this.graphics.drawCircle(this.trail[i].x+this.offset.x, this.trail[i].y+this.offset.y, 10);
-                console.log("drawn")
             }
             this.graphics.endFill();
             scene.addChild(this.graphics);
         }
 
     }
+     function normalize(point1, point2) {
+        let vector = {x: point2.x - point1.x, y: point2.y - point1.y};
+        let mag = getMag(point1, point2);
+        if (mag === 0) {
+            // If magnitude is zero, return a zero vector
+            return {x: 0, y: 0};
+        }
+        return {x: vector.x / mag, y: vector.y / mag};
+    }
+
+    function getMag(point1, point2){
+        let vector = {x: point2.x - point1.x, y: point2.y - point1.y};
+        return  Math.sqrt(vector.x ** 2 + vector.y ** 2)
+    }
+
+    function addVectors(point1, point2) {
+        return {x: point1.x  + point2.x, y: point1.y  + point2.y}
+    }
+    function  subVectors(point1, point2) {
+        return {x: point1.x - point2.x, y: point1.y - point2.y}
+    }
+    function mulVector(point1, factor) {
+        return {x: point1.x * factor, y: point1.y * factor}
+    }
+
 
     async function waitWhileLoading(sprite) {
         while (sprite.sprite === undefined) {
@@ -277,8 +277,7 @@ PIXI.settings.SCALE_MODE = PIXI.SCALE_MODES.NEAREST;
         trail.trail.push({x:PRP.x+1050,y:PRP.y - 515})
         trail.trail.push({x:PRP.x+425,y:PRP.y - 515})
         trail.trail.push({x:PRP.x-100,y:PRP.y - 700})
-
-
+        cog.pullyContainer.position = {x:PRP.x+1050,y:PRP.y - 660}
 
     }
 
@@ -288,6 +287,87 @@ PIXI.settings.SCALE_MODE = PIXI.SCALE_MODES.NEAREST;
         adjustPlayerPosition()
 
     });
+
+    function getRelativePlayerPosition(player){
+        let playerRelativePos = addVectors(player.position,{x:player.width/2,y:player.height/2})
+        if(player.scale.x < 0){
+            playerRelativePos.x -= player.width
+        }
+        return playerRelativePos
+    }
+
+    function getRelativeTrailPosition(trail,offset){
+        return  addVectors(trail,offset);
+    }
+    class Cog{
+        constructor() {
+            this.cog = null;
+            this.rope = null;
+            this.hook = null
+            this.pullyContainer = new PIXI.Container()
+
+            background.addChild(this.pullyContainer)
+            this.loadAsset();
+            this.previousRopeHeight = undefined
+
+            this.attached = false
+
+
+        }
+
+        async loadAsset(){
+            const cogAsset = await PIXI.Assets.load("assets/cog.png")
+            const ropeAsset = await PIXI.Assets.load("assets/rope.png")
+            const hookAsset = await PIXI.Assets.load("assets/hook.png")
+            this.cog = await new PIXI.Sprite(cogAsset)
+            this.rope = await new PIXI.TilingSprite(
+                ropeAsset,
+                7,
+                0,
+            );
+
+            this.hook = await new PIXI.Sprite(hookAsset)
+            this.hook.x -= 5
+            this.cog.anchor.set(0.5, 0.5)
+            this.pullyContainer.addChild(this.rope, this.cog, this.hook)
+            this.updateTicker = async (delta) => {
+                this.update(delta);
+            };
+            app.ticker.add(this.updateTicker)
+        }
+        update() {
+
+            if (this.previousRopeHeight === undefined) {
+                this.previousRopeHeight = this.rope.height;
+            }
+
+            const relativePlayerPosition = getRelativePlayerPosition(player.sprite);
+            const relativeTrailPosition = getRelativeTrailPosition(trail.trail[1], background.position);
+
+            if (getMag(relativeTrailPosition, relativePlayerPosition) < speed) {
+                this.attached = true;
+            }
+
+            if (this.attached) {
+                this.hook.y = (subVectors(relativePlayerPosition, background.position).y - this.pullyContainer.y) - player.sprite.height / 2;
+                const newRopeHeight = this.hook.y;
+
+
+                const deltaHeight = newRopeHeight - this.previousRopeHeight;
+
+
+                const rotationSpeedFactor = 0.01;
+                this.cog.rotation += deltaHeight * rotationSpeedFactor;
+
+
+                this.rope.height = newRopeHeight;
+
+                this.previousRopeHeight = newRopeHeight;
+            }
+        }
+
+    }
+
 
 
 
@@ -301,14 +381,17 @@ PIXI.settings.SCALE_MODE = PIXI.SCALE_MODES.NEAREST;
     app.stage.addChild(background)
     app.stage.addChild(scene);
 
-
+    const speed = 5
     const runningAni = new Animation("running.png", 48, 48, 8, 0.05,false)
     const idleAni = new Animation("idle.png", 48, 48, 10, 0.1)
     const player = new AnimatingSprite(idleAni)
+
     await waitWhileLoading(player)
     player.sprite.scale = {x: 2, y: 2}
     let PRP = {x: app.screen.width/2 + player.sprite.width/2, y: app.screen.height/3.5 *2+ player.sprite.height/2}
-    const trail = new Trail(background,player,5)
+    const trail = new Trail(background,player,speed)
+    const cog = new Cog()
+
     adjustPlayerPosition();
     adjustMapPosition();
 
@@ -335,6 +418,17 @@ PIXI.settings.SCALE_MODE = PIXI.SCALE_MODES.NEAREST;
         const bomb = await new AnimatingSprite(exploAni)
         bomb.sprite.position = mousePosition
         console.log(mousePosition)
+    }
+
+    const updateTicker = async (delta) => {
+        update(delta);
+    };
+    app.ticker.add(updateTicker)
+
+    function update(delta){
+
+
+
     }
 
 })();
